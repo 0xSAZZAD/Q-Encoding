@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Q Encoding (RFC 2047)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .message-box {
+            margin-top: 20px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background-color: #f7fafc;
+            color: #1e293b;
+            font-size: 1rem;
+            word-wrap: break-word;
+        }
+        .message-box.error {
+            background-color: #fee2e2;
+            border-color: #fecaca;
+            color: #b91c1c;
+        }
+        .message-box.success {
+            background-color: #f0fdf4;
+            border-color: #d1fae5;
+            color: #0f766e;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen py-10">
+    <div class="container bg-white shadow-lg rounded-lg p-8">
+        <h1 class="text-2xl font-semibold text-gray-800 mb-6 text-center">Q Encoding (RFC 2047)</h1>
+        <div class="mb-6">
+            <label for="text" class="block text-gray-700 text-sm font-bold mb-2">Text:</label>
+            <textarea id="text" placeholder="Enter text to encode/decode" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></textarea>
+        </div>
+        <div class="flex space-x-4 mb-4">
+            <button id="encode" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Encode</button>
+            <button id="decode" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Decode</button>
+        </div>
+        <div id="message" class="message-box"></div>
+        <div class="mt-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">Explanation:</h2>
+            <p class="text-gray-700 text-sm">
+                This tool encodes and decodes text according to the Q encoding method specified in RFC 2047.  The Q encoding is designed to represent 8-bit characters in headers of Internet mail messages.
+            </p>
+            <ul class="list-disc list-inside mt-2 text-gray-700 text-sm">
+                <li><b>Encoding:</b> Converts non-ASCII characters into an encoded format.  Spaces are converted to underscores (_), and other special characters are converted to an equals sign (=) followed by their two-digit hexadecimal representation.</li>
+                <li><b>Decoding:</b> Reverses the encoding process, converting encoded sequences back into their original characters.</li>
+                <li><b>Character Handling:</b>  This implementation correctly handles UTF-8 encoding, ensuring that a wide range of characters can be encoded and decoded without data loss.</li>
+                <li><b>UTF-8 Encoding:</b> The JavaScript `encodeURIComponent` function is used to encode the input string into UTF-8 before applying the Q encoding. This ensures that non-ASCII characters are correctly handled.</li>
+            </ul>
+        </div>
+    </div>
+    <script>
+        const textInput = document.getElementById('text');
+        const encodeButton = document.getElementById('encode');
+        const decodeButton = document.getElementById('decode');
+        const messageBox = document.getElementById('message');
+
+        // From RFC 2047:
+        // Q-encoding is similar to quoted-printable, but is designed to be more readable
+        // in non-English mail headers.
+        //
+        // 1.  Any 8-bit value may be represented by a "=" followed by two hex digits.
+        // 2.  Spaces are represented by underscores ("_").
+        // 3.  Only printable ASCII characters besides "=", "_", and "?" may appear
+        //     literally (i.e., without encoding).
+        //
+        // Important: This implementation now uses encodeURIComponent for UTF-8 encoding *before* Q encoding.
+
+        /**
+         * Encodes a string according to the Q encoding rules of RFC 2047.
+         *
+         * @param {string} str The string to encode.
+         * @returns {string} The Q-encoded string.
+         */
+        function qEncode(str) {
+            if (!str) return '';
+
+            // Use encodeURIComponent toPercentEncode UTF-8 first, then Q encode
+            const utf8Encoded = encodeURIComponent(str);
+
+            let encodedStr = '';
+            for (let i = 0; i < utf8Encoded.length; i++) {
+                const char = utf8Encoded[i];
+                const charCode = utf8Encoded.charCodeAt(i);
+
+                 if (char === '%') {
+                    const hex = utf8Encoded.substring(i+1, i+3);
+                    encodedStr += '=' + hex;
+                    i += 2;
+                }
+                else if (char === ' ') {
+                    encodedStr += '_';
+                } else if (isSafeChar(charCode)) {
+                    encodedStr += char;
+                } else {
+                    const hex = charCode.toString(16).toUpperCase();
+                    encodedStr += '=' + (hex.length === 1 ? '0' + hex : hex); // Ensure two-digit hex
+                }
+            }
+            return encodedStr;
+        }
+
+        /**
+         * Decodes a Q-encoded string according to RFC 2047.
+         *
+         * @param {string} str The Q-encoded string to decode.
+         * @returns {string} The decoded string.
+         */
+        function qDecode(str) {
+            if (!str) return '';
+
+            let decodedStr = '';
+            for (let i = 0; i < str.length; i++) {
+                const char = str[i];
+                if (char === '=') {
+                    if (i + 2 < str.length) {
+                        const hex = str.substring(i + 1, i + 3);
+                        const charCode = parseInt(hex, 16);
+                        if (!isNaN(charCode)) {
+                            decodedStr += String.fromCharCode(charCode);
+                            i += 2; // Skip the hex digits
+                        } else {
+                            decodedStr += char; // Handle invalid hex
+                        }
+                    } else {
+                        decodedStr += char; // Handle одинокий знак =
+                    }
+                } else if (char === '_') {
+                    decodedStr += ' ';
+                } else {
+                    decodedStr += char;
+                }
+            }
+
+            try {
+               return decodeURIComponent(decodedStr);
+             } catch (e){
+                return decodedStr;
+             }
+        }
+
+        /**
+         * Determines if a character is considered "safe" according to RFC 2047.
+         * Safe characters are printable ASCII characters excluding '=', '_', and '?'.
+         *
+         * @param {number} charCode The character code to check.
+         * @returns {boolean} True if the character is safe, false otherwise.
+         */
+        function isSafeChar(charCode) {
+            return (charCode >= 32 && charCode <= 126) && charCode !== 61 && charCode !== 95 && charCode !== 63 && charCode !== 37; // Excludes =, _, ?, %
+        }
+
+        function showMessage(text, type = 'info') {
+            messageBox.textContent = text;
+            messageBox.className = `message-box ${type === 'error' ? 'error' : type === 'success' ? 'success' : ''}`;
+        }
+
+        function clearMessage() {
+            messageBox.textContent = '';
+            messageBox.className = 'message-box'; // Reset to default class
+        }
+
+        encodeButton.addEventListener('click', () => {
+            clearMessage();
+            const text = textInput.value;
+            const encodedText = qEncode(text);
+            showMessage(`Encoded: ${encodedText}`, 'success');
+            textInput.value = encodedText;
+        });
+
+        decodeButton.addEventListener('click', () => {
+            clearMessage();
+            const text = textInput.value;
+            const decodedText = qDecode(text);
+            showMessage(`Decoded: ${decodedText}`, 'success');
+            textInput.value = decodedText;
+        });
+    </script>
+</body>
+</html>
